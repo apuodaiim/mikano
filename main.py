@@ -1,11 +1,4 @@
-from kivy.app import App
-from kivy.uix.boxlayout import BoxLayout
-from kivy.uix.label import Label
-from kivy.uix.textinput import TextInput
-from kivy.uix.button import Button
-from kivy.uix.scrollview import ScrollView
-from kivy.uix.gridlayout import GridLayout
-from kivy.uix.popup import Popup
+import flet as ft
 import json
 import os
 
@@ -21,120 +14,152 @@ def save_data(data):
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-class DataEntryApp(App):
-    def build(self):
-        self.data = load_data()
-        self.filtered_data = self.data.copy()
-        self.edit_index = None
+def main(page: ft.Page):
+    page.title = "إدارة البيانات"
+    page.scroll = "auto"
+    data = load_data()
+    filtered_data = data.copy()
+    edit_index = None
 
-        self.root_layout = BoxLayout(orientation='vertical', padding=10, spacing=10)
+    # البحث
+    search_field = ft.TextField(label="بحث...", on_change=lambda e: perform_search())
 
-        # حقل البحث
-        self.search_input = TextInput(hint_text="بحث...", size_hint_y=None, height=40)
-        self.search_input.bind(on_text_validate=self.perform_search)
-        self.root_layout.add_widget(self.search_input)
+    # الحقول
+    name_field = ft.TextField(label="الاسم الثلاثي")
+    mother_field = ft.TextField(label="اسم الأم")
+    birth_field = ft.TextField(label="المواليد")
+    address_field = ft.TextField(label="السكن")
+    id_field = ft.TextField(label="الرقم الذاتي")
+    phone_field = ft.TextField(label="رقم الهاتف")
 
-        # المنطقة التي تحتوي على الجدول
-        self.table_layout = GridLayout(cols=1, spacing=5, size_hint_y=None)
-        self.table_layout.bind(minimum_height=self.table_layout.setter('height'))
+    # الحقول مجمعة
+    field_controls = [
+        name_field,
+        mother_field,
+        birth_field,
+        address_field,
+        id_field,
+        phone_field,
+    ]
 
-        self.scroll = ScrollView(size_hint=(1, 1))
-        self.scroll.add_widget(self.table_layout)
+    dialog = None
 
-        self.root_layout.add_widget(self.scroll)
+    def refresh_table():
+        rows = []
+        for i, item in enumerate(filtered_data):
+            row = ft.DataRow(
+                cells=[
+                    ft.DataCell(ft.Text(item["name"])),
+                    ft.DataCell(ft.Text(item["mother"])),
+                    ft.DataCell(ft.Text(item["birth"])),
+                    ft.DataCell(ft.Text(item["address"])),
+                    ft.DataCell(ft.Text(item["id"])),
+                    ft.DataCell(ft.Text(item["phone"])),
+                    ft.DataCell(ft.IconButton(icon=ft.icons.EDIT, on_click=lambda e, idx=i: edit_item(idx))),
+                    ft.DataCell(ft.IconButton(icon=ft.icons.DELETE, on_click=lambda e, idx=i: delete_item(idx))),
+                ]
+            )
+            rows.append(row)
+        table.rows = rows
+        page.update()
 
-        # زر الإضافة
-        add_button = Button(text="إضافة بيانات", size_hint_y=None, height=50)
-        add_button.bind(on_release=self.open_add_popup)
-        self.root_layout.add_widget(add_button)
+    def open_dialog(is_edit=False):
+        nonlocal dialog
+        dialog = ft.AlertDialog(
+            title=ft.Text("تعديل البيانات" if is_edit else "إدخال البيانات"),
+            content=ft.Column(controls=field_controls, tight=True),
+            actions=[
+                ft.TextButton("إلغاء", on_click=lambda e: dialog.close()),
+                ft.ElevatedButton("حفظ", on_click=lambda e: save_item())
+            ],
+            on_dismiss=lambda e: None,
+        )
+        page.dialog = dialog
+        dialog.open = True
+        page.update()
 
-        self.refresh_table()
-        return self.root_layout
+    def clear_fields():
+        for f in field_controls:
+            f.value = ""
 
-    def refresh_table(self):
-        self.table_layout.clear_widgets()
-        for index, item in enumerate(self.filtered_data):
-            row = BoxLayout(size_hint_y=None, height=40)
-            row.add_widget(Label(text=item["name"]))
-            row.add_widget(Label(text=item["mother"]))
-            row.add_widget(Label(text=item["birth"]))
-            row.add_widget(Label(text=item["address"]))
-            row.add_widget(Label(text=item["id"]))
-            row.add_widget(Label(text=item["phone"]))
+    def open_add_dialog(e=None):
+        nonlocal edit_index
+        edit_index = None
+        clear_fields()
+        open_dialog()
 
-            edit_btn = Button(text="تعديل", size_hint_x=None, width=70)
-            edit_btn.bind(on_release=lambda x, i=index: self.edit_item(i))
-            row.add_widget(edit_btn)
-
-            del_btn = Button(text="حذف", size_hint_x=None, width=70)
-            del_btn.bind(on_release=lambda x, i=index: self.delete_item(i))
-            row.add_widget(del_btn)
-
-            self.table_layout.add_widget(row)
-
-    def open_add_popup(self, *args):
-        self.popup_layout = BoxLayout(orientation='vertical', spacing=10, padding=10)
-        self.fields = {
-            "name": TextInput(hint_text="الاسم الثلاثي"),
-            "mother": TextInput(hint_text="اسم الأم"),
-            "birth": TextInput(hint_text="المواليد"),
-            "address": TextInput(hint_text="السكن"),
-            "id": TextInput(hint_text="الرقم الذاتي"),
-            "phone": TextInput(hint_text="رقم الهاتف"),
+    def save_item():
+        nonlocal edit_index, data, filtered_data
+        item = {
+            "name": name_field.value,
+            "mother": mother_field.value,
+            "birth": birth_field.value,
+            "address": address_field.value,
+            "id": id_field.value,
+            "phone": phone_field.value
         }
-
-        for field in self.fields.values():
-            self.popup_layout.add_widget(field)
-
-        btn_layout = BoxLayout(size_hint_y=None, height=50, spacing=10)
-        save_btn = Button(text="حفظ")
-        save_btn.bind(on_release=self.save_item)
-        cancel_btn = Button(text="إلغاء")
-        cancel_btn.bind(on_release=lambda x: self.popup.dismiss())
-        btn_layout.add_widget(save_btn)
-        btn_layout.add_widget(cancel_btn)
-
-        self.popup_layout.add_widget(btn_layout)
-
-        self.popup = Popup(title="إدخال البيانات", content=self.popup_layout,
-                           size_hint=(0.9, 0.9))
-        self.popup.open()
-
-    def save_item(self, *args):
-        item = {k: field.text for k, field in self.fields.items()}
-        if self.edit_index is not None:
-            self.data[self.edit_index] = item
-            self.edit_index = None
+        if edit_index is not None:
+            data[edit_index] = item
         else:
-            self.data.append(item)
-        save_data(self.data)
-        self.filtered_data = self.data.copy()
-        self.refresh_table()
-        self.popup.dismiss()
+            data.append(item)
+        save_data(data)
+        filtered_data = data.copy()
+        refresh_table()
+        dialog.open = False
+        page.update()
 
-    def delete_item(self, index):
-        del self.data[index]
-        save_data(self.data)
-        self.filtered_data = self.data.copy()
-        self.refresh_table()
+    def delete_item(index):
+        del data[index]
+        save_data(data)
+        filtered_data[:] = data
+        refresh_table()
 
-    def edit_item(self, index):
-        self.edit_index = index
-        self.open_add_popup()
-        item = self.data[index]
-        for k in self.fields:
-            self.fields[k].text = item[k]
+    def edit_item(index):
+        nonlocal edit_index
+        edit_index = index
+        item = filtered_data[index]
+        name_field.value = item["name"]
+        mother_field.value = item["mother"]
+        birth_field.value = item["birth"]
+        address_field.value = item["address"]
+        id_field.value = item["id"]
+        phone_field.value = item["phone"]
+        open_dialog(is_edit=True)
 
-    def perform_search(self, *args):
-        query = self.search_input.text.strip().lower()
+    def perform_search():
+        nonlocal filtered_data
+        query = search_field.value.strip().lower()
         if query == "":
-            self.filtered_data = self.data.copy()
+            filtered_data = data.copy()
         else:
-            self.filtered_data = [
-                item for item in self.data
+            filtered_data = [
+                item for item in data
                 if query in json.dumps(item, ensure_ascii=False).lower()
             ]
-        self.refresh_table()
+        refresh_table()
 
-if __name__ == "__main__":
-    DataEntryApp().run()
+    table = ft.DataTable(
+        columns=[
+            ft.DataColumn(ft.Text("الاسم الثلاثي")),
+            ft.DataColumn(ft.Text("اسم الأم")),
+            ft.DataColumn(ft.Text("المواليد")),
+            ft.DataColumn(ft.Text("السكن")),
+            ft.DataColumn(ft.Text("الرقم الذاتي")),
+            ft.DataColumn(ft.Text("رقم الهاتف")),
+            ft.DataColumn(ft.Text("تعديل")),
+            ft.DataColumn(ft.Text("حذف")),
+        ],
+        rows=[],
+    )
+
+    add_button = ft.ElevatedButton(text="إضافة بيانات", on_click=open_add_dialog)
+
+    page.add(
+        search_field,
+        add_button,
+        table,
+    )
+
+    refresh_table()
+
+ft.app(target=main)
